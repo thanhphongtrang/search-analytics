@@ -1,0 +1,390 @@
+// ============================================
+// DAX MEASURES FOR SEARCH ANALYTICS DASHBOARD
+// Author: Phong Trang
+// Description: Power BI measures for Customer Search Behavior Analytics
+// ============================================
+
+// --------------------------------------------
+// 1. ENGAGEMENT METRICS
+// --------------------------------------------
+
+// Total Searches Submitted
+Total Searches = 
+COUNTROWS(
+    FILTER(
+        'SearchEvents',
+        'SearchEvents'[event_name] = "global_search_submit"
+    )
+)
+
+// Total Result Clicks
+Total Clicks = 
+COUNTROWS(
+    FILTER(
+        'SearchEvents',
+        'SearchEvents'[event_name] = "global_search_click_result"
+    )
+)
+
+// Engagement Rate (Primary KPI)
+Engagement Rate = 
+DIVIDE(
+    [Total Clicks],
+    [Total Searches],
+    0
+)
+
+// Engagement Rate % (for visualization)
+Engagement Rate % = 
+FORMAT([Engagement Rate], "0.0%")
+
+// Unique Users Who Searched
+Unique Search Users = 
+CALCULATE(
+    DISTINCTCOUNT('SearchEvents'[user_pseudo_id]),
+    'SearchEvents'[event_name] = "global_search_submit"
+)
+
+// Average Results Per Search
+Avg Results Returned = 
+CALCULATE(
+    AVERAGE('SearchEvents'[search_result_count]),
+    'SearchEvents'[event_name] = "global_search_submit"
+)
+
+
+// --------------------------------------------
+// 2. SEARCH REFINEMENT METRICS
+// --------------------------------------------
+
+// Search Refinements Count
+Total Refinements = 
+COUNTROWS(
+    FILTER(
+        'SearchEvents',
+        'SearchEvents'[event_name] = "global_search_refinement"
+    )
+)
+
+// Search Refinement Rate
+Refinement Rate = 
+DIVIDE(
+    [Total Refinements],
+    [Total Searches],
+    0
+)
+
+// Refinement Rate % (Lower is better - indicates relevance)
+Refinement Rate % = 
+FORMAT([Refinement Rate], "0.0%")
+
+
+// --------------------------------------------
+// 3. ZERO-RESULT METRICS (Content Gap Analysis)
+// --------------------------------------------
+
+// Zero Result Searches
+Zero Result Searches = 
+COUNTROWS(
+    FILTER(
+        'SearchEvents',
+        'SearchEvents'[event_name] = "global_search_submit" &&
+        'SearchEvents'[search_result_count] = 0
+    )
+)
+
+// Zero Result Rate
+Zero Result Rate = 
+DIVIDE(
+    [Zero Result Searches],
+    [Total Searches],
+    0
+)
+
+// Zero Result Rate %
+Zero Result Rate % = 
+FORMAT([Zero Result Rate], "0.0%")
+
+// Unique Zero Result Terms (Content Gap Opportunities)
+Unique Zero Result Terms = 
+CALCULATE(
+    DISTINCTCOUNT('SearchEvents'[search_term]),
+    'SearchEvents'[event_name] = "global_search_submit",
+    'SearchEvents'[search_result_count] = 0
+)
+
+
+// --------------------------------------------
+// 4. CONVERSION METRICS
+// --------------------------------------------
+
+// Users Who Searched
+Searched Users = 
+CALCULATETABLE(
+    VALUES('SearchEvents'[user_pseudo_id]),
+    'SearchEvents'[event_category] = "global search"
+)
+
+// Users Who Converted (Searched AND Ordered)
+Converted Users = 
+CALCULATETABLE(
+    VALUES('Orders'[user_pseudo_id]),
+    'Orders'[user_pseudo_id] IN [Searched Users]
+)
+
+// Search-to-Order Conversion Rate
+Search Conversion Rate = 
+VAR SearchedUsersCount = 
+    CALCULATE(
+        DISTINCTCOUNT('SearchEvents'[user_pseudo_id]),
+        'SearchEvents'[event_category] = "global search"
+    )
+VAR ConvertedUsersCount = 
+    CALCULATE(
+        DISTINCTCOUNT('Orders'[user_pseudo_id]),
+        'Orders'[user_pseudo_id] IN VALUES('SearchEvents'[user_pseudo_id])
+    )
+RETURN
+DIVIDE(
+    ConvertedUsersCount,
+    SearchedUsersCount,
+    0
+)
+
+// Search Conversion Rate %
+Search Conversion % = 
+FORMAT([Search Conversion Rate], "0.0%")
+
+
+// --------------------------------------------
+// 5. CLICK POSITION ANALYSIS
+// --------------------------------------------
+
+// Clicks by Position (for click distribution chart)
+Clicks at Position = 
+CALCULATE(
+    COUNTROWS('SearchEvents'),
+    'SearchEvents'[event_name] = "global_search_click_result"
+)
+
+// Top 3 Click Rate (% of clicks on first 3 results)
+Top 3 Click Rate = 
+VAR Top3Clicks = 
+    CALCULATE(
+        [Total Clicks],
+        'SearchEvents'[click_position] IN {1, 2, 3}
+    )
+RETURN
+DIVIDE(
+    Top3Clicks,
+    [Total Clicks],
+    0
+)
+
+
+// --------------------------------------------
+// 6. REGIONAL PERFORMANCE (with NULL handling)
+// --------------------------------------------
+
+// Regional Sales (Clean - handling NULL values)
+Regional Sales Clean = 
+VAR CurrentSalesValue = 'Sales'[sales_value]
+VAR CurrentRegion = 'Sales'[region]
+VAR CurrentProduct = 'Sales'[product_id]
+RETURN
+IF(
+    ISBLANK(CurrentSalesValue),
+    CALCULATE(
+        AVERAGE('Sales'[sales_value]),
+        ALLEXCEPT('Sales', 'Sales'[region], 'Sales'[product_id]),
+        NOT(ISBLANK('Sales'[sales_value]))
+    ),
+    CurrentSalesValue
+)
+
+// Total Sales (Cleaned)
+Total Sales Cleaned = 
+SUMX(
+    'Sales',
+    [Regional Sales Clean]
+)
+
+// Regional Search Volume
+Regional Search Volume = 
+CALCULATE(
+    [Total Searches],
+    ALLEXCEPT('SearchEvents', 'SearchEvents'[region])
+)
+
+// Sales per Search (Regional Efficiency)
+Sales per Search = 
+DIVIDE(
+    [Total Sales Cleaned],
+    [Regional Search Volume],
+    0
+)
+
+
+// --------------------------------------------
+// 7. TIME INTELLIGENCE MEASURES
+// --------------------------------------------
+
+// Previous Period Engagement Rate
+Engagement Rate Previous = 
+CALCULATE(
+    [Engagement Rate],
+    DATEADD('Calendar'[Date], -1, MONTH)
+)
+
+// Engagement Rate Change
+Engagement Rate Change = 
+[Engagement Rate] - [Engagement Rate Previous]
+
+// Engagement Rate Change %
+Engagement Rate Change % = 
+DIVIDE(
+    [Engagement Rate Change],
+    [Engagement Rate Previous],
+    0
+)
+
+// Month-over-Month Growth
+MoM Growth = 
+VAR CurrentMonth = [Total Searches]
+VAR PreviousMonth = 
+    CALCULATE(
+        [Total Searches],
+        DATEADD('Calendar'[Date], -1, MONTH)
+    )
+RETURN
+DIVIDE(
+    CurrentMonth - PreviousMonth,
+    PreviousMonth,
+    0
+)
+
+
+// --------------------------------------------
+// 8. DATA QUALITY INDICATORS
+// --------------------------------------------
+
+// NULL Sales Count (Data Quality Flag)
+NULL Sales Count = 
+COUNTROWS(
+    FILTER(
+        'Sales',
+        ISBLANK('Sales'[sales_value])
+    )
+)
+
+// NULL Sales Percentage
+NULL Sales % = 
+VAR TotalSalesRows = COUNTROWS('Sales')
+RETURN
+DIVIDE(
+    [NULL Sales Count],
+    TotalSalesRows,
+    0
+)
+
+// Data Quality Status (Visual Indicator)
+Data Quality Status = 
+SWITCH(
+    TRUE(),
+    [NULL Sales %] = 0, "✅ Complete",
+    [NULL Sales %] <= 0.05, "⚠️ Minor Issues (<5%)",
+    [NULL Sales %] <= 0.15, "⚠️ Moderate Issues (5-15%)",
+    "🔴 Major Issues (>15%)"
+)
+
+
+// --------------------------------------------
+// 9. CONDITIONAL FORMATTING MEASURES
+// --------------------------------------------
+
+// Engagement Rate Color (for conditional formatting)
+Engagement Rate Color = 
+SWITCH(
+    TRUE(),
+    [Engagement Rate] >= 0.65, "#10B981", // Green (Good)
+    [Engagement Rate] >= 0.50, "#F59E0B", // Amber (Acceptable)
+    "#EF4444" // Red (Needs Improvement)
+)
+
+// Zero Result Rate Color
+Zero Result Rate Color = 
+SWITCH(
+    TRUE(),
+    [Zero Result Rate] <= 0.05, "#10B981", // Green (Good)
+    [Zero Result Rate] <= 0.15, "#F59E0B", // Amber (Acceptable)
+    "#EF4444" // Red (High content gap)
+)
+
+
+// --------------------------------------------
+// 10. ADVANCED ANALYTICS
+// --------------------------------------------
+
+// Search Success Rate (Searches with clicks)
+Search Success Rate = 
+VAR SearchesWithClicks = 
+    CALCULATE(
+        DISTINCTCOUNT('SearchEvents'[session_id]),
+        'SearchEvents'[event_name] = "global_search_click_result"
+    )
+VAR TotalSearchSessions = 
+    CALCULATE(
+        DISTINCTCOUNT('SearchEvents'[session_id]),
+        'SearchEvents'[event_name] = "global_search_submit"
+    )
+RETURN
+DIVIDE(
+    SearchesWithClicks,
+    TotalSearchSessions,
+    0
+)
+
+// Average Click Position (Lower is better)
+Avg Click Position = 
+CALCULATE(
+    AVERAGE('SearchEvents'[click_position]),
+    'SearchEvents'[event_name] = "global_search_click_result"
+)
+
+// Sessions with Multiple Searches (refinement behavior)
+Multi-Search Sessions = 
+CALCULATE(
+    COUNTROWS(
+        FILTER(
+            ADDCOLUMNS(
+                VALUES('SearchEvents'[session_id]),
+                "SearchCount",
+                CALCULATE(
+                    COUNTROWS('SearchEvents'),
+                    'SearchEvents'[event_name] = "global_search_submit"
+                )
+            ),
+            [SearchCount] > 1
+        )
+    )
+)
+
+
+// --------------------------------------------
+// NOTES & USAGE
+// --------------------------------------------
+
+// Data Quality Framework:
+// - Use "Data Quality Status" measure in card visual for executive dashboard
+// - Regional Sales Clean automatically handles NULL values using regional-product averages
+// - Always use "Total Sales Cleaned" instead of SUM(sales_value)
+
+// Key Visualizations:
+// Page 1 (Executive): Engagement Rate %, Search Conversion %, Total Searches, Unique Search Users
+// Page 2 (Behavior): Zero Result Rate %, Top Zero Result Terms, Click Position Distribution
+// Page 3 (Regional): Regional Search Volume, Sales per Search, Data Quality Status by Region
+
+// Performance Tips:
+// - Click position measures filtered to specific positions use calculated columns where possible
+// - Time intelligence measures require proper Calendar table relationship
+// - Regional measures optimized with ALLEXCEPT instead of ALL + FILTER

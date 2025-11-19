@@ -1,0 +1,24 @@
+# Python Dependencies for Search Analytics Portfolio
+# Author: Phong Trang
+
+# Data Processing
+pandas==2.0.3
+numpy==1.24.3
+
+# Databricks & Spark
+databricks-sql-connector==2.9.3
+pyspark==3.4.1
+
+# Data Visualization (optional, for local analysis)
+matplotlib==3.7.2
+seaborn==0.12.2
+
+# Utilities
+python-dateutil==2.8.2
+
+# For typo detection in zero_results_analysis.py
+python-Levenshtein==0.21.1
+
+# Testing (optional)
+pytest==7.4.0
+pytest-cov==4.1.0
